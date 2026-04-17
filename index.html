@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mosque Match System</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+<style>
+body{
+margin:0;
+font-family:Arial;
+background:linear-gradient(135deg,#0a1f44,#0d47a1,#1976d2);
+color:white;
+display:flex;
+justify-content:center;
+align-items:center;
+min-height:100vh;
+}
+
+.container{
+width:380px;
+background:rgba(255,255,255,0.08);
+padding:20px;
+border-radius:20px;
+backdrop-filter:blur(15px);
+box-shadow:0 0 25px rgba(33,150,243,0.6);
+animation:slideUp 0.6s ease;
+}
+
+input,textarea,button{
+width:100%;
+padding:10px;
+margin:6px 0;
+border-radius:12px;
+border:none;
+outline:none;
+}
+
+input,textarea{
+background:rgba(255,255,255,0.1);
+color:white;
+}
+
+/* NEON BUTTON */
+button{
+background:#2196f3;
+color:white;
+font-weight:bold;
+position:relative;
+overflow:hidden;
+box-shadow:0 0 10px #2196f3, 0 0 20px #2196f3;
+transition:0.3s;
+}
+
+button:hover{
+transform:scale(1.05);
+box-shadow:0 0 15px #42a5f5, 0 0 30px #42a5f5;
+}
+
+/* RIPPLE EFFECT */
+button::after{
+content:"";
+position:absolute;
+border-radius:50%;
+width:100px;
+height:100px;
+top:50%;
+left:50%;
+background:rgba(255,255,255,0.5);
+transform:translate(-50%,-50%) scale(0);
+opacity:0;
+transition:0.5s;
+}
+
+button:active::after{
+transform:translate(-50%,-50%) scale(2);
+opacity:1;
+transition:0s;
+}
+
+.hidden{display:none}
+.locked{opacity:0.6;pointer-events:none}
+
+/* SCOREBOARD */
+.scoreboard{
+display:flex;
+justify-content:space-between;
+align-items:center;
+background:rgba(0,0,0,0.4);
+padding:15px;
+border-radius:15px;
+margin-bottom:10px;
+box-shadow:0 0 20px rgba(0,0,0,0.5);
+}
+
+.teamBox{
+text-align:center;
+flex:1;
+}
+
+.score{
+font-size:30px;
+font-weight:bold;
+text-shadow:0 0 10px #42a5f5;
+}
+
+.matchBox{display:flex;gap:10px}
+.team{flex:1;background:rgba(0,0,0,0.3);padding:10px;border-radius:12px}
+
+@keyframes slideUp{
+from{opacity:0;transform:translateY(20px)}
+to{opacity:1;transform:translateY(0)}
+}
+</style>
+</head>
+
+<body>
+
+<div class="container" id="page1">
+<h2>Enter Mosque Name</h2>
+<input id="mosque">
+<button onclick="checkMosque()">Continue</button>
+<button onclick="openAdminPage()">Referee Panel</button>
+</div>
+
+<div class="container hidden" id="page2">
+<h2>Match Form</h2>
+<input id="coach" placeholder="Coach">
+<input class="player" placeholder="Player 1">
+<input class="player" placeholder="Player 2">
+<input class="player" placeholder="Player 3">
+<input class="player" placeholder="Player 4">
+<input id="keeper" placeholder="Goalkeeper">
+<textarea id="subs" placeholder="Subs max 4"></textarea>
+
+<button id="printBtn" onclick="printForm()">Print</button>
+<button id="submitBtn" onclick="confirmSubmit()">Submit</button>
+</div>
+
+<div class="container hidden" id="adminPage">
+<h2>Referee Panel</h2>
+<input id="refName" placeholder="Enter Referee Name">
+<button onclick="openAdmin()">Enter</button>
+<div id="adminContent" class="hidden">
+<div id="teams"></div>
+<div id="matchView"></div>
+</div>
+</div>
+
+<script>
+const firebaseConfig={apiKey:"AIza...",databaseURL:"https://mosque-match-8415b-default-rtdb.firebaseio.com/"};
+firebase.initializeApp(firebaseConfig);
+const db=firebase.database();
+
+let currentMosque="";
+let selectedA=null;
+let selectedB=null;
+
+function checkMosque(){
+currentMosque=mosque.value.trim();
+if(!currentMosque) return alert('Enter name');
+
+db.ref('teams/'+currentMosque).once('value').then(s=>{
+if(s.exists()) loadLockedForm(s.val());
+else{page1.classList.add('hidden');page2.classList.remove('hidden');}
+});
+}
+
+function printForm(){window.print();}
+
+function confirmSubmit(){
+let rules="RULES:\n1. Be fair\n2. No cheating\n3. Respect referee\n4. Max 4 subs";
+if(confirm(rules+"\n\nSubmit?")) submitForm();
+}
+
+function submitForm(){
+const data={
+mosque:currentMosque,
+coach:coach.value,
+players:[...document.querySelectorAll('.player')].map(p=>p.value),
+keeper:keeper.value,
+subs:subs.value.split(',')
+};
+
+db.ref('teams/'+currentMosque).set(data).then(()=>{
+alert('Submitted ✅');
+loadLockedForm(data);
+});
+}
+
+function loadLockedForm(d){
+page1.classList.add('hidden');
+page2.classList.remove('hidden');
+coach.value=d.coach;
+keeper.value=d.keeper;
+subs.value=d.subs.join(',');
+document.querySelectorAll('.player').forEach((p,i)=>p.value=d.players[i]||'');
+page2.classList.add('locked');
+}
+
+function openAdminPage(){page1.classList.add('hidden');adminPage.classList.remove('hidden');}
+
+function openAdmin(){
+if(refName.value!=='YUSUF ROKIB') return alert('Denied');
+adminContent.classList.remove('hidden');
+loadTeams();
+}
+
+function loadTeams(){
+db.ref('teams').on('value',snap=>{
+let html='';
+snap.forEach(c=>{
+let t=c.val();
+html+=`<div>${t.mosque}
+<button onclick="pickTeam('${t.mosque}')">Select</button>
+<button onclick="clearTeam('${t.mosque}')">Clear</button>
+</div>`;
+});
+teams.innerHTML=html;
+});
+}
+
+function clearTeam(id){if(confirm('Delete?')) db.ref('teams/'+id).remove();}
+
+function pickTeam(id){
+db.ref('teams/'+id).once('value').then(s=>{
+let t=s.val();
+if(!selectedA){selectedA=t;return}
+if(!selectedB){selectedB=t;showMatch();return}
+selectedA=t;selectedB=null;
+});
+}
+
+function showMatch(){
+matchView.innerHTML=`
+<div class="scoreboard">
+<div class="teamBox">${selectedA.mosque}<div class="score" id="scoreA">0</div></div>
+<div class="teamBox">${selectedB.mosque}<div class="score" id="scoreB">0</div></div>
+</div>
+<input id="inputA" type="number" oninput="updateScore()">
+<input id="inputB" type="number" oninput="updateScore()">
+<div id="players"></div>
+`;
+}
+
+function updateScore(){
+document.getElementById('scoreA').innerText=inputA.value||0;
+document.getElementById('scoreB').innerText=inputB.value||0;
+renderPlayers();
+}
+
+function renderPlayers(){
+let html='';
+[selectedA,selectedB].forEach(t=>{
+html+=`<h4>${t.mosque}</h4>`;
+t.players.forEach(p=>{
+let id=t.mosque+'_'+p.replace(/ /g,'_');
+html+=`${p}
+<button onclick="stat('${id}','⚽')">⚽</button>
+<button onclick="stat('${id}','🟨')">🟨</button>
+<button onclick="stat('${id}','🟥')">🟥</button>
+<button onclick="stat('${id}','🤕')">🤕</button>
+<span id="${id}"></span><br>`;
+});
+});
+players.innerHTML=html;
+}
+
+function stat(id,s){let el=document.getElementById(id);if(el) el.innerText+=s;}
+</script>
+
+</body>
+</html>
